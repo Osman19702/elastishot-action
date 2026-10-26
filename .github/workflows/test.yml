@@ -43,7 +43,8 @@ jobs:
           npm ci
           npm run build
           npm pack
-          echo "tarball=$PWD/$(ls elastishot-*.tgz)" >> "$GITHUB_OUTPUT"
+          # A native path: npm on Windows reads Git Bash's /d/a/... as a folder on the current drive.
+          echo "tarball=$(node -p "require('path').resolve(require('fs').readdirSync('.').find((f) => f.startsWith('elastishot-') && f.endsWith('.tgz')))")" >> "$GITHUB_OUTPUT"
       - name: A repository whose page changed in the working tree
         shell: bash
         run: |

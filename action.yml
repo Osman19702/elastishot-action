@@ -68,10 +68,11 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
       run: |
-        own=$(node -e "try { console.log(require.resolve('elastishot/package.json', { paths: [process.cwd()] })) } catch {}")
+        # Node builds the path: on Windows it is D:\... and bash's dirname does not split it.
+        own=$(node -e "try { const path = require('path'); const p = require.resolve('elastishot/package.json', { paths: [process.cwd()] }); console.log(path.join(path.dirname(p), 'bin', 'elastishot.js') + ' ' + require(p).version) } catch {}")
         if [ -n "$own" ]; then
-          echo "bin=$(dirname "$own")/bin/elastishot.js" >> "$GITHUB_OUTPUT"
-          echo "Using the project's elastishot $(node -p "require(process.argv[1]).version" "$own")"
+          echo "bin=${own% *}" >> "$GITHUB_OUTPUT"
+          echo "Using the project's elastishot ${own##* }"
         else
           spec="$VERSION"
           case "$spec" in *.tgz|file:*|./*|/*) ;; *) spec="elastishot@$VERSION" ;; esac
