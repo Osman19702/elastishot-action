@@ -1,0 +1,75 @@
+name: Test
+
+# Runs the action against elastishot built from source, on a repository whose
+# page changed in the working tree, and checks it reported the change. Run it
+# by hand with the elastishot ref about to be released (docs/RELEASING.md in
+# elastishot), and on pull requests here.
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      elastishot-ref:
+        description: elastishot branch, tag or commit to test against
+        default: master
+
+permissions:
+  contents: read
+
+jobs:
+  changed-page:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: action
+      - uses: actions/checkout@v7
+        with:
+          repository: Osman19702/elastishot
+          ref: ${{ inputs.elastishot-ref || 'master' }}
+          path: elastishot
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Pack elastishot
+        id: pack
+        shell: bash
+        working-directory: elastishot
+        run: |
+          npm ci
+          npm run build
+          npm pack
+          echo "tarball=$PWD/$(ls elastishot-*.tgz)" >> "$GITHUB_OUTPUT"
+      - name: A repository whose page changed in the working tree
+        shell: bash
+        run: |
+          mkdir site && cd site
+          git init -q -b main
+          git config user.email test@example.com
+          git config user.name test
+          mkdir page shared
+          cp ../elastishot/test/fixtures/site/shared/style.css shared/
+          cp ../elastishot/test/fixtures/site/v1/index.html page/
+          echo '{ "viewports": [{ "name": "desktop", "width": 1280, "height": 800 }], "capture": { "fullPage": true }, "targets": [{ "name": "home", "url": "/page/" }] }' > elastishot.config.json
+          git add -A
+          git commit -q -m 'version 1'
+          cp ../elastishot/test/fixtures/site/v2/index.html page/
+      - id: check
+        uses: ./action
+        with:
+          working-directory: site
+          base: main
+          version: ${{ steps.pack.outputs.tarball }}
+      - name: The action reported the change
+        shell: bash
+        env:
+          CODE: ${{ steps.check.outputs.exit-code }}
+          DIR: ${{ steps.check.outputs.report-dir }}
+        run: |
+          test "$CODE" = "1"
+          grep -q 'data-testid=\\"cta\\"' "$DIR/report.json"
+          grep -q '| home | desktop | \*\*failed\*\*' "$DIR/summary.md"

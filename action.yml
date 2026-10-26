@@ -1,0 +1,142 @@
+name: Elastishot visual check
+description: Compare a pull request's pages with its base branch, both served in the job, and name the elements that changed. No baselines to commit.
+author: Osman Turalioglu
+branding:
+  icon: eye
+  color: purple
+
+inputs:
+  base:
+    description: Commit, branch or tag to compare against. Default the pull request's base (the base side of the merge commit the checkout made).
+    required: false
+    default: ''
+  config:
+    description: Path to elastishot.config.(mjs|js|cjs|json), relative to working-directory. Default the nearest one from working-directory up.
+    required: false
+    default: ''
+  working-directory:
+    description: Folder to run in. Default the repository root.
+    required: false
+    default: '.'
+  args:
+    description: More arguments for elastishot pr, for example "home pricing --threshold 0.99".
+    required: false
+    default: ''
+  version:
+    description: The elastishot to use when the project does not install it, as an npm version or a tarball path. Default the version this release of the action was made for.
+    required: false
+    default: '0.3.0'
+  fail-on-diff:
+    description: Fail the job when the pull request changes the UI (exit code 1). A run that could not finish (exit code 2) always fails it.
+    required: false
+    default: 'false'
+  artifact-name:
+    description: Name of the uploaded report artifact.
+    required: false
+    default: 'elastishot-report'
+  install-browsers:
+    description: Install Playwright's Chromium and the system packages it needs.
+    required: false
+    default: 'true'
+
+outputs:
+  exit-code:
+    description: 0 no visual change, 1 the UI changed (or a page is new), 2 the check could not finish.
+    value: ${{ steps.check.outputs.exit-code }}
+  report-dir:
+    description: The run folder, with index.html, report.json, junit.xml and summary.md.
+    value: ${{ steps.check.outputs.report-dir }}
+  artifact-url:
+    description: Where the uploaded report can be downloaded.
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    # The base side of a pull request's merge commit needs a second commit of history.
+    - name: Fetch the base commit
+      if: github.event_name == 'pull_request' && inputs.base == ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: git rev-parse -q --verify 'HEAD^1' >/dev/null || git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
+
+    # The project's own elastishot when it has one, so its lockfile decides the version.
+    - name: Find or install elastishot
+      id: bin
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        own=$(node -e "try { console.log(require.resolve('elastishot/package.json', { paths: [process.cwd()] })) } catch {}")
+        if [ -n "$own" ]; then
+          echo "bin=$(dirname "$own")/bin/elastishot.js" >> "$GITHUB_OUTPUT"
+          echo "Using the project's elastishot $(node -p "require(process.argv[1]).version" "$own")"
+        else
+          spec="$VERSION"
+          case "$spec" in *.tgz|file:*|./*|/*) ;; *) spec="elastishot@$VERSION" ;; esac
+          npm install --prefix "$RUNNER_TEMP/elastishot" --no-audit --no-fund "$spec" playwright
+          echo "bin=$RUNNER_TEMP/elastishot/node_modules/elastishot/bin/elastishot.js" >> "$GITHUB_OUTPUT"
+        fi
+
+    # The Chromium of the Playwright elastishot loads, whichever install that is.
+    - name: Install Chromium
+      if: inputs.install-browsers == 'true'
+      shell: bash
+      env:
+        BIN: ${{ steps.bin.outputs.bin }}
+      run: |
+        cli=$(node -e "const path = require('path'); const p = require.resolve('playwright/package.json', { paths: [path.dirname(process.argv[1])] }); console.log(path.join(path.dirname(p), 'cli.js'))" "$BIN")
+        node "$cli" install --with-deps chromium
+
+    - name: Compare with the base
+      id: check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BIN: ${{ steps.bin.outputs.bin }}
+        BASE: ${{ inputs.base }}
+        CONFIG: ${{ inputs.config }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        out="$RUNNER_TEMP/elastishot-run"
+        echo "report-dir=$out" >> "$GITHUB_OUTPUT"
+        set +e
+        # ARGS is split into words on purpose: it is a list of arguments.
+        node "$BIN" pr --junit --out "$out" ${BASE:+--base "$BASE"} ${CONFIG:+--config "$CONFIG"} $ARGS
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the report
+      id: upload
+      if: always() && steps.check.outputs.report-dir != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.check.outputs.report-dir }}
+        if-no-files-found: ignore
+        retention-days: 14
+
+    - name: Link the report from the job summary
+      if: always() && steps.upload.outputs.artifact-url != ''
+      shell: bash
+      env:
+        NAME: ${{ inputs.artifact-name }}
+        URL: ${{ steps.upload.outputs.artifact-url }}
+      run: |
+        echo "Full report: [$NAME]($URL) (index.html in the download)." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Verdict
+      if: always()
+      shell: bash
+      env:
+        CODE: ${{ steps.check.outputs.exit-code }}
+        FAIL_ON_DIFF: ${{ inputs.fail-on-diff }}
+      run: |
+        case "$CODE" in
+          0) echo "No visual change." ;;
+          1) if [ "$FAIL_ON_DIFF" = "true" ]; then echo "::error::The pull request changes the UI; the job summary lists what moved."; exit 1; fi
+             echo "::notice::The pull request changes the UI; the job summary lists what moved." ;;
+          *) echo "::error::elastishot pr could not finish (exit code ${CODE:-none}); the log above says why."; exit 1 ;;
+        esac
