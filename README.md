@@ -71,6 +71,10 @@ The job summary gets a table of the pages that changed and the elements behind e
 
 Use the `pull_request` trigger. `pull_request_target` would build code from a fork with access to your repository's secrets, and the check runs your install and build commands.
 
+## Privacy
+
+The action collects no data and has no telemetry. It downloads elastishot and Chromium from their public registries. The pages it captures are served inside your job, and its report goes only to your own workflow run, as a job summary and an artifact.
+
 ## Versions
 
 `v0.3.0` installs elastishot 0.3.0 unless the project has its own. `v0.3` follows the latest 0.3 release. Dependabot's `github-actions` updates keep a pinned tag current.
