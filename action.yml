@@ -1,5 +1,5 @@
 name: Elastishot visual check
-description: Compare a pull request's pages with its base branch and name the DOM elements that changed. No baselines to commit.
+description: Compare the pages of a pull request with its base branch and name the DOM elements that changed. No baselines to commit.
 author: Osman Turalioglu
 branding:
   icon: eye
