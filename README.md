@@ -77,7 +77,7 @@ The action collects no data and has no telemetry. It downloads elastishot and Ch
 
 ## Versions
 
-`v0.3.0` installs elastishot 0.3.0 unless the project has its own. `v0.3` follows the latest 0.3 release. Dependabot's `github-actions` updates keep a pinned tag current.
+Releases are tagged `vX.Y.Z`, and `v0.3` follows the latest 0.3 release. The 0.3 releases install elastishot 0.3.0 unless the project has its own. Dependabot's `github-actions` updates keep a pinned tag current.
 
 ## Licence
 
