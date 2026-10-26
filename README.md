@@ -56,7 +56,7 @@ The job summary gets a table of the pages that changed and the elements behind e
 | `args` | | More `elastishot pr` arguments, for example `home --threshold 0.99`. |
 | `version` | this release's | The elastishot used when the project does not install it. |
 | `fail-on-diff` | `false` | Fail the job when the UI changed. A check that could not finish always fails. |
-| `artifact-name` | `elastishot-report` | Name of the uploaded report. |
+| `artifact-name` | `elastishot-report` | Name of the uploaded report. In a matrix, give each job its own, for example `elastishot-report-${{ matrix.os }}`. |
 | `install-browsers` | `true` | Install Playwright's Chromium and its system packages. |
 
 ## Outputs

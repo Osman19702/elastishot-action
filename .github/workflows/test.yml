@@ -65,6 +65,7 @@ jobs:
           working-directory: site
           base: main
           version: ${{ steps.pack.outputs.tarball }}
+          artifact-name: elastishot-report-${{ matrix.os }}
       - name: The action reported the change
         shell: bash
         env:
